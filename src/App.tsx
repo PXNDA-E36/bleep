@@ -5,7 +5,6 @@
  * @format
  */
 
-import { NewAppScreen } from '@react-native/new-app-screen';
 import {
     StatusBar,
     StyleSheet,
@@ -40,6 +39,7 @@ function AppContent() {
     const safeAreaInsets = useSafeAreaInsets();
 
     const [devices, setDevices] = useState<Device[]>([]);
+    const [connectedDevices, setConnectedDevices] = useState<Device[]>([]);
 
     const startScan = async () => {
         BLEService.stopScan();
@@ -58,12 +58,21 @@ function AppContent() {
         )
     }
 
-    const selectDevice = (device: Device) => {
+    const selectDevice = async (device: Device) => {
         BLEService.stopScan();
+
         console.log('Selected device:', device.name ?? device.localName ?? device.id);
 
-        // later:
-        // symBle.connectToSym(device);
+        const connectedDevice = await BLEService.connectToSym(
+            device,
+            notif => console.log('Notification:', notif),
+            error => console.error(error)
+        );
+
+        setConnectedDevices(prev => {
+            if (prev.some(d => d.id === connectedDevice.id)) return prev;
+            return [...prev, connectedDevice];
+        });
     };
 
     return (
@@ -79,6 +88,20 @@ function AppContent() {
             </View>
 
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+                {connectedDevices.length === 0 ? (
+                    <Text style={styles.deviceName}>None connected</Text>
+                ) : (
+                    connectedDevices.map(device => (
+                        <View key={device.id} style={styles.deviceItem}>
+                            <Text style={styles.deviceName}>
+                                {device.name ?? device.localName ?? 'Unnamed Device'}
+                            </Text>
+
+                            <Text style={styles.deviceId}>Connected</Text>
+                        </View>
+                    ))
+                )}
+
                 {devices.map(device => (
                     <Pressable
                         key={device.id}
@@ -89,7 +112,11 @@ function AppContent() {
                             {device.name ?? device.localName ?? 'Unnamed'}
                         </Text>
 
-                        <Text style={styles.deviceId}>{device.serviceUUIDs}</Text>
+                        <Text style={styles.deviceId}>
+                            {(device.serviceUUIDs ?? [])
+                                .filter(uuid => !uuid.toLowerCase().endsWith('-0000-1000-8000-00805f9b34fb'))
+                                .join(', ') || 'No custom UUIDs'}
+                        </Text>
                         <Text style={styles.deviceId}>{device.rssi}</Text>
                     </Pressable>
                 ))}
