@@ -121,8 +121,17 @@ class BLEServiceInstance {
     this.manager.stopDeviceScan();
   };
 
-  connectToSym = async (
-    device: Device,
+  connectToSym = async (device: Device) => {
+    this.stopScan();
+
+    const connectedDevice = await device.connect();
+
+    this.device = await connectedDevice.discoverAllServicesAndCharacteristics();
+
+    return this.device;
+  };
+
+  pairingMode = async (
     onData?: (value: string | null) => void,
     onError?: (error: Error) => void,
   ) => {
@@ -130,12 +139,9 @@ class BLEServiceInstance {
     const subcribeUUID = '01973b7a-35a8-77f8-ad32-996d1cfd5796';
     const writeUUID = '01973b7a-35a8-7e32-95a0-e900d4a65171';
 
-    this.stopScan();
-
-    const connectedDevice = await device.connect();
-
-    this.device = await connectedDevice.discoverAllServicesAndCharacteristics();
-
+    if (!this.device) {
+      throw new Error('No connected device');
+    }
     this.device.monitorCharacteristicForService(
       lampUUID,
       subcribeUUID,
@@ -156,8 +162,6 @@ class BLEServiceInstance {
       writeUUID,
       'AQUB',
     );
-
-    return this.device;
   };
 }
 

@@ -63,11 +63,15 @@ function AppContent() {
 
         console.log('Selected device:', device.name ?? device.localName ?? device.id);
 
-        const connectedDevice = await BLEService.connectToSym(
-            device,
-            notif => console.log('Notification:', notif),
-            error => console.error(error)
-        );
+        const connectedDevice = await BLEService.connectToSym(device);
+
+        if (connectedDevice.serviceUUIDs?.includes('01973b7a-35a8-741b-9c72-8655d201c8ec')) {
+            BLEService.pairingMode(
+                notif => console.log('Notification:', notif),
+                error => console.error(error)
+            )
+
+        }
 
         setConnectedDevices(prev => {
             if (prev.some(d => d.id === connectedDevice.id)) return prev;
@@ -103,21 +107,20 @@ function AppContent() {
                 )}
 
                 {devices.map(device => (
-                    <Pressable
-                        key={device.id}
-                        style={styles.deviceItem}
-                        onPress={() => selectDevice(device)}
-                    >
-                        <Text style={styles.deviceName}>
-                            {device.name ?? device.localName ?? 'Unnamed'}
-                        </Text>
+                    <Pressable style={styles.deviceItem}>
+                        <Text>{device.name ?? "Unnamed device"}</Text>
 
-                        <Text style={styles.deviceId}>
-                            {(device.serviceUUIDs ?? [])
-                                .filter(uuid => !uuid.toLowerCase().endsWith('-0000-1000-8000-00805f9b34fb'))
-                                .join(', ') || 'No custom UUIDs'}
-                        </Text>
-                        <Text style={styles.deviceId}>{device.rssi}</Text>
+                        <View style={styles.buttonRow}>
+                            <Button
+                                title="Connect"
+                                onPress={() => selectDevice(device)}
+                            />
+
+                            <Button
+                                title="Flash"
+                            // onPress={() => flashDevice(device)}
+                            />
+                        </View>
                     </Pressable>
                 ))}
             </ScrollView>
@@ -134,6 +137,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 24,
         marginBottom: 16,
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-evenly',
+        marginTop: 10,
     },
     list: {
         flex: 1,
