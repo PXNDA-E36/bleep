@@ -90,26 +90,26 @@ class BLEServiceInstance {
 
       if (!device) return;
 
-      const bluetoothBaseUUID = '-0000-1000-8000-00805f9b34fb';
-
-      const customUuidPrefixes = [
-        '01973b7a-35a8', // esp-ble-role-coex / Sym
-        'cc720cdc-2c0f', // DeepSym8b
-      ];
-
-      const serviceUUIDs = device.serviceUUIDs ?? [];
-
-      const customUUIDs = serviceUUIDs.filter(
-        uuid => !uuid.toLowerCase().endsWith(bluetoothBaseUUID),
-      );
-
-      const matches = customUUIDs.some(uuid =>
-        customUuidPrefixes.some(prefix =>
-          uuid.toLowerCase().startsWith(prefix.toLowerCase()),
-        ),
-      );
-      if (!matches) return;
-
+      // const bluetoothBaseUUID = '-0000-1000-8000-00805f9b34fb';
+      //
+      // const customUuidPrefixes = [
+      //   '01973b7a-35a8', // esp-ble-role-coex / Sym
+      //   'cc720cdc-2c0f', // DeepSym8b
+      // ];
+      //
+      // const serviceUUIDs = device.serviceUUIDs ?? [];
+      //
+      // const customUUIDs = serviceUUIDs.filter(
+      //   uuid => !uuid.toLowerCase().endsWith(bluetoothBaseUUID),
+      // );
+      //
+      // const matches = customUUIDs.some(uuid =>
+      //   customUuidPrefixes.some(prefix =>
+      //     uuid.toLowerCase().startsWith(prefix.toLowerCase()),
+      //   ),
+      // );
+      // if (!matches) return;
+      //
       if (!this.foundSyms.has(device.id)) {
         this.foundSyms.set(device.id, device);
         onFound(Array.from(this.foundSyms.values()));

@@ -1,10 +1,3 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
 import {
     StatusBar,
     StyleSheet,
@@ -13,7 +6,9 @@ import {
     Button,
     Pressable,
     Text,
-    ScrollView
+    ScrollView,
+    Alert,
+    ActivityIndicator,
 } from 'react-native';
 import {
     SafeAreaProvider,
@@ -22,7 +17,10 @@ import {
 import { Device } from 'react-native-ble-plx';
 import { useState } from 'react';
 import { BLEService } from './BLEService.ts';
-
+import { OTAService } from './OTAService.ts';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import RNFS from 'react-native-fs';
+import { Buffer } from 'buffer';
 
 function App() {
     const isDarkMode = useColorScheme() === 'dark';
@@ -41,7 +39,13 @@ function AppContent() {
     const [devices, setDevices] = useState<Device[]>([]);
     const [connectedDevices, setConnectedDevices] = useState<Device[]>([]);
 
+    const [isFlashing, setIsFlashing] = useState<boolean>(false);
+    const [flashProgress, setFlashProgress] = useState<number>(0);
+    const [flashingDeviceId, setFlashingDeviceId] = useState<string | null>(null);
+
     const startScan = async () => {
+        if (isFlashing) return;
+
         BLEService.stopScan();
 
         setDevices([]);
@@ -59,6 +63,8 @@ function AppContent() {
     }
 
     const selectDevice = async (device: Device) => {
+        if (isFlashing) return;
+
         BLEService.stopScan();
 
         console.log('Selected device:', device.name ?? device.localName ?? device.id);
@@ -79,6 +85,65 @@ function AppContent() {
         });
     };
 
+    const loadFirmwareFile = async (): Promise<Uint8Array | null> => {
+        try {
+            const [res] = await pick({
+                type: [types.allFiles],
+            });
+
+            if (res.name && !res.name.toLowerCase().endsWith('.bin')) {
+                Alert.alert('Warning', 'This file does not have a .bin extension.', [
+                    { text: 'Cancel', style: 'cancel' },
+                ]);
+            }
+
+            console.log(`Loading file: ${res.name} (${res.size} bytes)`);
+
+            const base64Content = await RNFS.readFile(res.uri, 'base64');
+            return new Uint8Array(Buffer.from(base64Content, 'base64'));
+        } catch (err: unknown) {
+            if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {
+                console.log('User cancelled operation');
+                return null;
+            }
+
+            throw err;
+        }
+    };
+
+    const flashDevice = async (device: Device) => {
+        if (isFlashing) return;
+
+        try {
+            const firmwareBinary = await loadFirmwareFile();
+
+            if (firmwareBinary === null) {
+                console.log("Flash aborted: No file selected.");
+                return;
+            }
+
+            setIsFlashing(true);
+            setFlashingDeviceId(device.id);
+            setFlashProgress(0);
+
+            BLEService.stopScan();
+
+            await OTAService.flashDevice(device, firmwareBinary, (progress) => {
+                setFlashProgress(progress);
+            });
+
+            Alert.alert('Success', 'Firmware flashed successfully! The device is now rebooting.');
+
+            setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
+        } catch (error: any) {
+            console.error('OTA Flash Lifecycle Failure:', error);
+
+            Alert.alert('Flash Failure', error?.message || 'An unexpected error halted the process.');
+        } finally {
+            setIsFlashing(false);
+            setFlashingDeviceId(null);
+        }
+    };
     return (
         <View style={[
             styles.container,
@@ -88,7 +153,11 @@ function AppContent() {
             },
         ]}>
             <View style={styles.buttonContainer}>
-                <Button title="Find Syms" onPress={startScan} />
+                <Button
+                    title="Find Syms"
+                    onPress={startScan}
+                    disabled={isFlashing}
+                />
             </View>
 
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
@@ -107,8 +176,10 @@ function AppContent() {
                 )}
 
                 {devices.map(device => (
-                    <Pressable style={styles.deviceItem}>
-                        <Text>{device.name ?? "Unnamed device"}</Text>
+                    <Pressable key={device.id} style={styles.deviceItem}>
+                        <Text style={styles.deviceName}>{device.name ?? "Unnamed device"}</Text>
+                        <Text style={styles.deviceId}>{device.serviceUUIDs}</Text>
+                        <Text style={styles.deviceId}>{device.rssi}</Text>
 
                         <View style={styles.buttonRow}>
                             <Button
@@ -118,8 +189,15 @@ function AppContent() {
 
                             <Button
                                 title="Flash"
-                            // onPress={() => flashDevice(device)}
+                                onPress={() => flashDevice(device)}
                             />
+
+                            {isFlashing && flashingDeviceId === device.id && (
+                                <View style={styles.progressContainer}>
+                                    <ActivityIndicator size="small" color="#0000ff" />
+                                    <Text style={styles.progressText}>Flashing: {flashProgress}%</Text>
+                                </View>
+                            )}
                         </View>
                     </Pressable>
                 ))}
@@ -164,6 +242,21 @@ const styles = StyleSheet.create({
         marginTop: 4,
         fontSize: 12,
         textAlign: 'center',
+    },
+    progressContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 12,
+        padding: 8,
+        backgroundColor: '#e3f2fd',
+        borderRadius: 4,
+    },
+    progressText: {
+        marginLeft: 8,
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#0d47a1',
     },
 });
 
