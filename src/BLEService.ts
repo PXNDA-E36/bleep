@@ -1,5 +1,6 @@
 import { BleManager, Device } from 'react-native-ble-plx';
 import { PermissionsAndroid, Platform } from 'react-native';
+import { Buffer } from 'buffer';
 
 class BLEServiceInstance {
   manager: BleManager;
@@ -161,6 +162,25 @@ class BLEServiceInstance {
       lampUUID,
       writeUUID,
       'AQUB',
+    );
+  };
+
+  changeName = async (
+    inputString: string,
+    onData?: (value: string | null) => void,
+    onError?: (error: Error) => void,
+  ) => {
+    const defaultUUID = '00001800-0000-1000-8000-00805f9b34fb';
+    const nameUUID = '00002a00-0000-1000-8000-00805f9b34fb';
+
+    if (!this.device) {
+      throw new Error('No connected device');
+    }
+
+    await this.device.writeCharacteristicWithResponseForService(
+      defaultUUID,
+      nameUUID,
+      Buffer.from(inputString, 'utf8').toString('base64'),
     );
   };
 }
