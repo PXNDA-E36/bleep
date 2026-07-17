@@ -51,13 +51,7 @@ class OTAServiceInstance {
       const isConnected = await device.isConnected();
 
       if (!isConnected) {
-        console.log(`Device [${device.id}] is disconnected. Connecting...`);
-
-        await device.connect();
-
-        console.log('Connected. Discovering services and characteristics...');
-
-        await device.discoverAllServicesAndCharacteristics();
+        throw new Error('OTA aborted: Device not connected');
       } else {
         console.log(
           `Device [${device.id}] is already connected. Ensuring services are discovered...`,

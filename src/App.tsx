@@ -38,17 +38,17 @@ function App() {
 function AppContent() {
     const safeAreaInsets = useSafeAreaInsets();
 
-    const [devices, setDevices] = useState<Device[]>([]);
-    const [connectedDevices, setConnectedDevices] = useState<Device[]>([]);
+    const [devices, setDevices] = useState<Device[]>([]); // List of scanned, unconnected devices
+    const [connectedDevices, setConnectedDevices] = useState<Device[]>([]); // List of active connections
 
-    const [isFlashing, setIsFlashing] = useState<boolean>(false);
-    const [flashProgress, setFlashProgress] = useState<number>(0);
-    const [flashingDeviceId, setFlashingDeviceId] = useState<string | null>(null);
+    const [isFlashing, setIsFlashing] = useState<boolean>(false); // Lock state during a firmware flash
+    const [flashProgress, setFlashProgress] = useState<number>(0); // Progress indicator
+    const [flashingDeviceId, setFlashingDeviceId] = useState<string | null>(null); // Track which device is flashing
 
-    const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
-    const [typedName, setTypedName] = useState<string>('');
-    const [isSavingName, setIsSavingName] = useState<boolean>(false);
-    const [customNames, setCustomNames] = useState<Record<string, string>>({});
+    const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null); // Track device currently being renamed
+    const [typedName, setTypedName] = useState<string>(''); // Holds temporary text typed in the name editor
+    const [isSavingName, setIsSavingName] = useState<boolean>(false); // Spinner flag while writing the new name
+    const [customNames, setCustomNames] = useState<Record<string, string>>({}); // Key-Value map of { deviceId: customName }
 
     const startScan = async () => {
         if (isFlashing) return;
@@ -94,6 +94,7 @@ function AppContent() {
 
         setConnectedDevices(prev => {
             if (prev.some(d => d.id === connectedDevice.id)) return prev;
+
             return [...prev, connectedDevice];
         });
     };
@@ -105,6 +106,7 @@ function AppContent() {
             await device.cancelConnection();
         } catch (error) {
             console.error('Failed to disconnect device cleanly:', error);
+
             setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
         }
     };
@@ -127,6 +129,7 @@ function AppContent() {
                 ...prev,
                 [deviceID]: inputString,
             }));
+
             setEditingDeviceId(null);
         } catch (error: any) {
             console.error('Failed to change name:', error);
@@ -243,6 +246,7 @@ function AppContent() {
                                                     title="Save"
                                                     onPress={() => writeName(device.id, typedName)}
                                                 />
+
                                                 <Button
                                                     title="Cancel"
                                                     color="#FF3B30"
@@ -269,6 +273,18 @@ function AppContent() {
 
                                         <View style={styles.buttonRow}>
                                             <Button
+                                                title="Flash"
+                                                onPress={() => flashDevice(device)}
+                                            />
+
+                                            {isFlashing && flashingDeviceId === device.id && (
+                                                <View style={styles.progressContainer}>
+                                                    <ActivityIndicator size="small" color="#0000ff" />
+                                                    <Text style={styles.progressText}>Flashing: {flashProgress}%</Text>
+                                                </View>
+                                            )}
+
+                                            <Button
                                                 title="Disconnect"
                                                 color="#FF3B30"
                                                 onPress={() => disconnectDevice(device)}
@@ -282,38 +298,29 @@ function AppContent() {
                     })
                 )}
 
-                {devices.map(device => (
-                    <Pressable key={device.id} style={styles.deviceItem}>
-                        <Text style={styles.deviceName}>
-                            {device.name ?? device.localName ?? 'Unnamed'}
-                        </Text>
-                        <Text style={styles.deviceId}>
-                            {(device.serviceUUIDs ?? [])
-                                .filter(uuid => !uuid.toLowerCase().endsWith('-0000-1000-8000-00805f9b34fb'))
-                                .join(', ') || 'No custom UUIDs'}
-                        </Text>
-                        <Text style={styles.deviceId}>{device.rssi}</Text>
+                {devices
+                    .filter(scannedDevice => !connectedDevices.some(connected => connected.id === scannedDevice.id))
+                    .map(device => (
+                        <Pressable key={device.id} style={styles.deviceItem}>
+                            <Text style={styles.deviceName}>
+                                {device.name ?? device.localName ?? 'Unnamed'}
+                            </Text>
+                            <Text style={styles.deviceId}>
+                                {(device.serviceUUIDs ?? [])
+                                    .filter(uuid => !uuid.toLowerCase().endsWith('-0000-1000-8000-00805f9b34fb'))
+                                    .join(', ') || 'No custom UUIDs'}
+                            </Text>
+                            <Text style={styles.deviceId}>{device.rssi}</Text>
 
-                        <View style={styles.buttonRow}>
-                            <Button
-                                title="Connect"
-                                onPress={() => selectDevice(device)}
-                            />
+                            <View style={styles.buttonRow}>
+                                <Button
+                                    title="Connect"
+                                    onPress={() => selectDevice(device)}
+                                />
 
-                            <Button
-                                title="Flash"
-                                onPress={() => flashDevice(device)}
-                            />
-
-                            {isFlashing && flashingDeviceId === device.id && (
-                                <View style={styles.progressContainer}>
-                                    <ActivityIndicator size="small" color="#0000ff" />
-                                    <Text style={styles.progressText}>Flashing: {flashProgress}%</Text>
-                                </View>
-                            )}
-                        </View>
-                    </Pressable>
-                ))}
+                            </View>
+                        </Pressable>
+                    ))}
             </ScrollView>
         </View>
     );
@@ -332,6 +339,9 @@ const styles = StyleSheet.create({
     buttonRow: {
         flexDirection: 'row',
         justifyContent: 'space-evenly',
+        width: '80%',
+        alignSelf: 'center',
+        gap: 12,
         marginTop: 10,
     },
     list: {
