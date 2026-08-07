@@ -13,23 +13,22 @@ const WRITE_UUID = '01973b7a-35a8-7e32-95a0-e900d4a65171';
 
 class BLEServiceInstance {
   manager: BleManager;
-  device: Device | null;
-  foundSyms = new Map<string, Device>();
+  device: Device | null = null;
+  private foundSyms = new Map<string, Device>();
 
   // BLE States
-  notifySubscription: Subscription | null = null; // Active notif listner
-  sensorCount: number = 0; // Latest sensor count
-  batteryPayload: BatteryPayload | null = null; // Latest battery payload
+  private notifySubscription: Subscription | null = null; // Active notif listner
+  private sensorCount: number = 0; // Latest sensor count
+  private batteryPayload: BatteryPayload | null = null; // Latest battery payload
 
   // Callbacks
-  onPairingCompleteCallback?: () => void;
-  onPairingDataCallback?: (rawValue: string) => void;
-  onBatteryDataCallback?: (data: BatteryPayload) => void;
-  onErrorCallback?: (error: Error) => void;
+  private onPairingCompleteCallback?: () => void;
+  private onPairingDataCallback?: (rawValue: string) => void;
+  private onBatteryDataCallback?: (data: BatteryPayload) => void;
+  private onErrorCallback?: (error: Error) => void;
 
   constructor() {
     this.manager = new BleManager();
-    this.device = null;
   }
 
   requestBluetoothPermission = async () => {
@@ -96,9 +95,7 @@ class BLEServiceInstance {
           message: error.message,
           reason: (error as any).reason,
           errorCode: (error as any).errorCode,
-          androidErrorCode: (error as any).androidErrorCode,
         });
-
         onError?.(error);
         return;
       }
@@ -118,6 +115,7 @@ class BLEServiceInstance {
           uuid.toLowerCase().startsWith(prefix.toLowerCase()),
         ),
       );
+
       if (!matches) return;
 
       if (!this.foundSyms.has(device.id)) {
@@ -131,13 +129,32 @@ class BLEServiceInstance {
     this.manager.stopDeviceScan();
   };
 
-  connectToSym = async (device: Device) => {
+  connectToSym = async (device: Device): Promise<Device> => {
     this.stopScan();
 
     const connectedDevice = await device.connect();
     this.device = await connectedDevice.discoverAllServicesAndCharacteristics();
 
     return this.device;
+  };
+
+  // Safe write helper
+  // Verifies connection state before attempting GATT writes
+  private safeWrite = async (base64Payload: string): Promise<void> => {
+    if (!this.device) {
+      throw new Error('No connected device available');
+    }
+
+    const isConnected = await this.device.isConnected();
+    if (!isConnected) {
+      throw new Error('Device connection lost prior to write operation');
+    }
+
+    await this.device.writeCharacteristicWithResponseForService(
+      LAMP_SERVICE_UUID,
+      WRITE_UUID,
+      base64Payload,
+    );
   };
 
   // Main notif handler
@@ -202,8 +219,7 @@ class BLEServiceInstance {
               i + 2 < bytes.length && extractedValues.length < 5;
               i += 3
             ) {
-              const percent = bytes[i + 1]; // Byte holding just battery percent
-              extractedValues.push(percent);
+              extractedValues.push(bytes[i + 1]);
             }
 
             if (extractedValues.length > 0) {
@@ -232,10 +248,6 @@ class BLEServiceInstance {
     onData?: (rawValue: string) => void,
     onError?: (error: Error) => void,
   ): Promise<void> => {
-    if (!this.device) {
-      throw new Error('No connected device');
-    }
-
     this.onPairingDataCallback = onData;
     this.onErrorCallback = onError;
 
@@ -250,12 +262,7 @@ class BLEServiceInstance {
 
       try {
         await new Promise<void>(res => setTimeout(res, 150));
-
-        await this.device.writeCharacteristicWithResponseForService(
-          LAMP_SERVICE_UUID,
-          WRITE_UUID,
-          'AQUB',
-        );
+        await this.safeWrite('AQUB');
       } catch (err) {
         this.onErrorCallback?.(err as Error);
         reject(err);
@@ -268,20 +275,12 @@ class BLEServiceInstance {
     onData?: (data: BatteryPayload) => void,
     onError?: (error: Error) => void,
   ) => {
-    if (!this.device) {
-      throw new Error('No connected device');
-    }
-
     this.onBatteryDataCallback = onData;
     this.onErrorCallback = onError;
 
     try {
       await new Promise<void>(res => setTimeout(res, 150));
-      await this.device.writeCharacteristicWithResponseForService(
-        LAMP_SERVICE_UUID,
-        WRITE_UUID,
-        'AQYB',
-      );
+      await this.safeWrite('AQYB');
     } catch (err) {
       this.onErrorCallback?.(err as Error);
       onError?.(err as Error);
@@ -331,6 +330,10 @@ class BLEServiceInstance {
   unsubscribeNotifications = () => {
     this.notifySubscription?.remove();
     this.notifySubscription = null;
+    this.onPairingCompleteCallback = undefined;
+    this.onPairingDataCallback = undefined;
+    this.onBatteryDataCallback = undefined;
+    this.onErrorCallback = undefined;
   };
 }
 
