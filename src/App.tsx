@@ -78,18 +78,21 @@ function AppContent() {
 
         const connectedDevice = await BLEService.connectToSym(device);
 
-        connectedDevice.onDisconnected((error, disconnectedDevice) => {
+        connectedDevice.onDisconnected((_, disconnectedDevice) => {
             console.log('Device disconnected:', disconnectedDevice?.id ?? device.id);
 
             setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
         });
 
         if (connectedDevice.serviceUUIDs?.includes('01973b7a-35a8-741b-9c72-8655d201c8ec')) {
-            BLEService.pairingMode(
-                notif => console.log('Notification:', notif),
-                error => console.error(error)
-            )
-
+            BLEService.runFullSequence(
+                pairingData => console.log('Pairing notification:', pairingData),
+                batteryData => {
+                    console.log('Lamp Battery:', batteryData.lampBattery);
+                    console.log('Sensor Batteries:', batteryData.sensorBatteries);
+                },
+                error => console.error('BLE Error:', error)
+            );
         }
 
         setConnectedDevices(prev => {
