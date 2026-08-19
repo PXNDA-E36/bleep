@@ -76,24 +76,20 @@ function AppContent() {
 
         console.log('Selected device:', device.name ?? device.localName ?? device.id);
 
-        const connectedDevice = await BLEService.connectToSym(device);
+        const connectedDevice = await BLEService.connectToSym(
+            device,
+            batteryData => {
+                console.log('Lamp Battery:', batteryData.lampBattery);
+                console.log('Sensor Batteries:', batteryData.sensorBatteries);
+            },
+            error => console.error('BLE Error:', error)
+        );
 
         connectedDevice.onDisconnected((_, disconnectedDevice) => {
             console.log('Device disconnected:', disconnectedDevice?.id ?? device.id);
 
             setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
         });
-
-        if (connectedDevice.serviceUUIDs?.includes('01973b7a-35a8-741b-9c72-8655d201c8ec')) {
-            BLEService.runFullSequence(
-                pairingData => console.log('Pairing notification:', pairingData),
-                batteryData => {
-                    console.log('Lamp Battery:', batteryData.lampBattery);
-                    console.log('Sensor Batteries:', batteryData.sensorBatteries);
-                },
-                error => console.error('BLE Error:', error)
-            );
-        }
 
         setConnectedDevices(prev => {
             if (prev.some(d => d.id === connectedDevice.id)) return prev;
@@ -103,15 +99,9 @@ function AppContent() {
     };
 
     const disconnectDevice = async (device: Device) => {
-        if (isFlashing) return;
+        BLEService.disconnect();
 
-        try {
-            await device.cancelConnection();
-        } catch (error) {
-            console.error('Failed to disconnect device cleanly:', error);
-
-            setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
-        }
+        setConnectedDevices(prev => prev.filter(d => d.id !== device.id));
     };
 
     const writeName = async (deviceID: string, inputString: string) => {

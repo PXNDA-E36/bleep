@@ -1,4 +1,9 @@
-import { BleManager, Device, Subscription } from 'react-native-ble-plx';
+import {
+  BleError,
+  BleManager,
+  Device,
+  Subscription,
+} from 'react-native-ble-plx';
 import { PermissionsAndroid, Platform } from 'react-native';
 import { Buffer } from 'buffer';
 
@@ -103,7 +108,6 @@ class BLEServiceInstance {
       if (!device) return;
 
       const bluetoothBaseUUID = '-0000-1000-8000-00805f9b34fb';
-      const customUuidPrefixes = ['01973b7a-35a8', 'cc720cdc-2c0f'];
 
       const serviceUUIDs = device.serviceUUIDs ?? [];
       const customUUIDs = serviceUUIDs.filter(
@@ -111,9 +115,7 @@ class BLEServiceInstance {
       );
 
       const matches = customUUIDs.some(uuid =>
-        customUuidPrefixes.some(prefix =>
-          uuid.toLowerCase().startsWith(prefix.toLowerCase()),
-        ),
+        uuid.toLowerCase().startsWith('01973b7a-35a8'.toLowerCase()),
       );
 
       if (!matches) return;
@@ -129,11 +131,21 @@ class BLEServiceInstance {
     this.manager.stopDeviceScan();
   };
 
-  connectToSym = async (device: Device): Promise<Device> => {
+  connectToSym = async (
+    device: Device,
+    onBatteryData?: (data: BatteryPayload) => void,
+    onError?: (error: Error | BleError) => void,
+  ): Promise<Device> => {
     this.stopScan();
 
     const connectedDevice = await device.connect();
     this.device = await connectedDevice.discoverAllServicesAndCharacteristics();
+
+    if (onError) this.onErrorCallback = onError;
+
+    this.subscribeToNotifications(onError);
+
+    await this.requestBatteryPercent(onBatteryData, onError);
 
     return this.device;
   };
@@ -256,7 +268,7 @@ class BLEServiceInstance {
         // Clear onPairingCompleteCallback
         this.onPairingCompleteCallback = undefined;
 
-        // Resovle promise
+        // Add resovle promise
         resolve();
       };
 
@@ -264,7 +276,9 @@ class BLEServiceInstance {
         await new Promise<void>(res => setTimeout(res, 150));
         await this.safeWrite('AQUB');
       } catch (err) {
+        this.onPairingCompleteCallback = undefined;
         this.onErrorCallback?.(err as Error);
+        onError?.(err as Error);
         reject(err);
       }
     });
@@ -284,26 +298,6 @@ class BLEServiceInstance {
     } catch (err) {
       this.onErrorCallback?.(err as Error);
       onError?.(err as Error);
-    }
-  };
-
-  // Sequential sequence handler: setup subscription -> pairing -> battery
-  runFullSequence = async (
-    onPairingData?: (rawValue: string) => void,
-    onBatteryData?: (data: BatteryPayload) => void,
-    onError?: (error: Error) => void,
-  ) => {
-    try {
-      this.subscribeToNotifications(onError);
-
-      console.log('Starting pairing scan...');
-      await this.startPairingMode(onPairingData, onError);
-
-      console.log('Pairing complete. Requesting battery percent...');
-      await this.requestBatteryPercent(onBatteryData, onError);
-    } catch (error) {
-      console.error('Sequence execution failed:', error);
-      onError?.(error as Error);
     }
   };
 
@@ -334,6 +328,28 @@ class BLEServiceInstance {
     this.onPairingDataCallback = undefined;
     this.onBatteryDataCallback = undefined;
     this.onErrorCallback = undefined;
+  };
+
+  // Safely cleans up subscriptions, cancels the connection, and resets instance state.
+  disconnect = async (): Promise<void> => {
+    try {
+      this.unsubscribeNotifications();
+
+      if (this.device) {
+        const isConnected = await this.device.isConnected();
+        if (isConnected) {
+          console.log(`Disconnecting from device: ${this.device.id}...`);
+          await this.device.cancelConnection();
+        }
+      }
+    } catch (error) {
+      console.error('Error during BLE disconnect:', error);
+    } finally {
+      this.device = null;
+      this.sensorCount = 0;
+      this.batteryPayload = null;
+      console.log('BLE Service disconnected and state cleared.');
+    }
   };
 }
 
